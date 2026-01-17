@@ -1,0 +1,194 @@
+{% extends "finance/layouts.html" %}
+
+{% block body %}
+<div class="max-w-6xl mx-auto mt-10">
+
+    <div class="bg-gray-900 rounded-lg shadow-md p-8 border-t-4 border-indigo-500 text-white mb-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h2 class="text-3xl font-bold">Admin Portal</h2>
+                <p class="text-gray-400 mt-1">Manage users and allocate capital.</p>
+            </div>
+            <div class="flex space-x-4">
+                <a href="{% url 'staff_dashboard' %}" class="bg-gray-700 hover:bg-gray-600 text-white px-5 py-3 rounded-lg font-bold shadow-lg transition flex items-center border border-gray-600">
+                    <span>📋 Loan Requests</span>
+                </a>
+
+                <button @click="openModal" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg transition flex items-center">
+                    <span>+ Invest in Bonds</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <p class="text-gray-500 text-xs font-bold uppercase tracking-wide">Total Users</p>
+            <p class="text-3xl font-extrabold text-gray-800 mt-2">[[ stats.total_users ]]</p>
+            <p class="text-xs text-gray-400 mt-1">Active Accounts</p>
+        </div>
+
+        <div class="bg-purple-50 p-6 rounded-xl shadow-sm border border-purple-100">
+            <p class="text-purple-600 text-xs font-bold uppercase tracking-wide">Total Share Capital</p>
+            <p class="text-2xl font-extrabold text-gray-800 mt-2">KES [[ formatNum(stats.share_pool) ]]</p>
+            <p class="text-xs text-purple-400 mt-1">Member Deposits</p>
+        </div>
+
+        <div class="bg-indigo-50 p-6 rounded-xl shadow-sm border border-indigo-100">
+            <p class="text-indigo-600 text-xs font-bold uppercase tracking-wide">Govt Bonds (Assets)</p>
+            <p class="text-2xl font-extrabold text-gray-800 mt-2">KES [[ formatNum(stats.bonds_balance) ]]</p>
+            <p class="text-xs text-indigo-400 mt-1">Invested Funds</p>
+        </div>
+
+        <div class="bg-green-50 p-6 rounded-xl shadow-sm border border-green-100">
+            <p class="text-green-600 text-xs font-bold uppercase tracking-wide">Proj. Returns (15%)</p>
+            <p class="text-2xl font-extrabold text-gray-800 mt-2">KES [[ formatNum(stats.returns) ]]</p>
+            <p class="text-xs text-green-400 mt-1">Annual Yield</p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
+        <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <h3 class="text-lg font-bold text-gray-700">User Management</h3>
+            <input v-model="search" type="text" placeholder="Search users..." class="border rounded-lg px-4 py-2 text-sm w-64 focus:ring-2 focus:ring-indigo-500 outline-none">
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm text-left">
+                <thead class="bg-gray-100 text-gray-600 uppercase font-bold text-xs">
+                    <tr>
+                        <th class="px-6 py-4">User</th>
+                        <th class="px-6 py-4">Joined</th>
+                        <th class="px-6 py-4">Savings Balance</th>
+                        <th class="px-6 py-4">Loan Debt</th>
+                        <th class="px-6 py-4 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    <tr v-for="user in filteredUsers" :key="user.id" class="hover:bg-gray-50 transition">
+                        <td class="px-6 py-4">
+                            <div class="font-bold text-gray-900">[[ user.username ]]</div>
+                            <div class="text-xs text-gray-500">[[ user.email ]]</div>
+                        </td>
+                        <td class="px-6 py-4 text-gray-500">[[ formatDate(user.joined) ]]</td>
+                        <td class="px-6 py-4 font-medium text-green-600">KES [[ formatNum(user.savings) ]]</td>
+                        <td class="px-6 py-4 font-medium text-red-600">KES [[ formatNum(user.loan_balance) ]]</td>
+                        <td class="px-6 py-4 text-center">
+                            <form :action="'/staff/delete-user/' + user.id + '/'" method="post" onsubmit="return confirm('Are you sure? This cannot be undone.');">
+                                {% csrf_token %}
+                                <button type="submit" class="text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1 rounded font-bold text-xs border border-red-200">
+                                    Delete User
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr v-if="filteredUsers.length === 0">
+                        <td colspan="5" class="px-6 py-8 text-center text-gray-400">No users found matching your search.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
+        <h3 class="text-xl font-bold mb-2 text-gray-800">Invest in Government Bonds</h3>
+        <p class="text-gray-500 text-sm mb-6">
+            Allocate funds from the <strong>Share Capital Pool</strong> into 15% yield bonds.
+            <br>
+            <span class="text-indigo-600 font-bold mt-2 block">Available Pool: KES [[ formatNum(stats.available_capital) ]]</span>
+        </p>
+
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Investment Amount</label>
+        <input v-model.number="investAmount" type="number" class="w-full border-2 border-gray-200 p-3 rounded-lg mb-4 focus:border-indigo-500 outline-none text-lg font-bold text-gray-800" placeholder="0.00">
+
+        <div class="flex space-x-3">
+            <button @click="submitInvest" :disabled="loading || investAmount > stats.available_capital" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed">
+                [[ loading ? 'Processing...' : 'Confirm Investment' ]]
+            </button>
+            <button @click="showModal = false" class="flex-1 bg-gray-100 text-gray-800 py-3 rounded-lg hover:bg-gray-200 font-bold">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            const stats = ref({ total_users: 0, share_pool: 0, bonds_balance: 0, available_capital: 0, returns: 0 });
+            const users = ref([]);
+            const search = ref('');
+            
+            const showModal = ref(false);
+            const investAmount = ref('');
+            const loading = ref(false);
+
+            // Helpers
+            const formatNum = (num) => num ? num.toLocaleString() : '0';
+            const formatDate = (dateString) => {
+                if (!dateString) return '';
+                return new Date(dateString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            };
+
+            // Search Logic
+            const filteredUsers = computed(() => {
+                if (!search.value) return users.value;
+                const term = search.value.toLowerCase();
+                return users.value.filter(u => 
+                    u.username.toLowerCase().includes(term) || 
+                    u.email.toLowerCase().includes(term)
+                );
+            });
+
+            // API Calls
+            const fetchData = async () => {
+                const res = await fetch('/api/admin-data/');
+                const data = await res.json();
+                stats.value = data;
+                users.value = data.users;
+            };
+
+            const submitInvest = async () => {
+                loading.value = true;
+                try {
+                    const res = await fetch('/api/admin-invest/', {
+                        method: 'POST',
+                        body: JSON.stringify({ amount: investAmount.value })
+                    });
+                    const data = await res.json();
+                    
+                    if (data.success) {
+                        alert("Investment Successful!");
+                        showModal.value = false;
+                        investAmount.value = '';
+                        fetchData();
+                    } else {
+                        alert(data.error);
+                    }
+                } catch (e) {
+                    alert("Network Error");
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const openModal = () => { showModal.value = true; }
+
+            onMounted(() => fetchData());
+
+            return {
+                stats, users, search, filteredUsers,
+                showModal, investAmount, loading,
+                formatNum, formatDate, openModal, submitInvest
+            }
+        },
+        compilerOptions: { delimiters: ['[[', ']]'] }
+    }).mount('#app');
+</script>
+{% endblock %}

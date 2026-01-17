@@ -1,0 +1,98 @@
+{% extends "finance/layouts.html" %}
+
+{% block body %}
+<div class="max-w-6xl mx-auto mt-10">
+    <h2 class="text-2xl font-bold mb-6 text-gray-800">Staff Portal: Pending Approvals</h2>
+
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Applied On</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for loan in loans %}
+                <tr>
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ loan.user.username }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">KES {{ loan.principal_amount }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">{{ loan.duration_months }} Months</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">{{ loan.date_applied|date:"M d, Y" }}</td>
+                    <td class="px-6 py-4 text-sm space-x-2">
+                        <div class="flex items-center space-x-2">
+                            <form action="{% url 'approve_loan' loan.id %}" method="post">
+                                {% csrf_token %}
+                                <button type="submit" class="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-xs font-bold transition">
+                                    Approve
+                                </button>
+                            </form>
+
+                            <button 
+                                data-url="{% url 'reject_loan' loan.id %}" 
+                                onclick="openRejectModal(this.getAttribute('data-url'))"
+                                class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-xs font-bold transition">
+                                Reject
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="px-6 py-10 text-center text-gray-500">No pending loan requests.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="rejectModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6 transform transition-all">
+        <h3 class="text-xl font-bold mb-4 text-gray-800">Reject Loan Application</h3>
+        
+        <form id="rejectForm" method="post">
+            {% csrf_token %}
+            
+            <p class="text-sm text-gray-600 mb-2">Please provide a reason for rejection:</p>
+            <textarea name="reason" rows="3" class="w-full border p-2 rounded focus:ring-2 focus:ring-red-500 outline-none" placeholder="e.g. Credit score too low..." required></textarea>
+            
+            <div class="flex space-x-3 mt-4">
+                <button type="submit" class="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700 font-bold">
+                    Confirm Reject
+                </button>
+                <button type="button" onclick="closeRejectModal()" class="flex-1 bg-gray-200 text-gray-800 py-2 rounded hover:bg-gray-300 font-bold">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    // Simple Vanilla JS to handle the modal
+    // We don't need full Vue.js complexity for this admin table
+    
+    function openRejectModal(actionUrl) {
+        // 1. Find the modal and the form
+        const modal = document.getElementById('rejectModal');
+        const form = document.getElementById('rejectForm');
+        
+        // 2. Set the form's action to the specific loan URL
+        form.action = actionUrl;
+        
+        // 3. Show the modal
+        modal.classList.remove('hidden');
+    }
+
+    function closeRejectModal() {
+        const modal = document.getElementById('rejectModal');
+        modal.classList.add('hidden');
+    }
+</script>
+{% endblock %}
