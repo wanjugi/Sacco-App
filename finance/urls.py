@@ -6,7 +6,6 @@ urlpatterns = [
     path("login", views.login_view, name="login"),
     path("logout", views.logout_view, name="logout"),
     path("register", views.register, name="register"),
-    # NEW: The Dashboard has its own home
     path("dashboard/", views.dashboard, name="dashboard"),
     
     # API Routes
@@ -20,7 +19,7 @@ urlpatterns = [
     path("staff/approve/<int:loan_id>/", views.approve_loan, name="approve_loan"),
     path("staff/reject/<int:loan_id>/", views.reject_loan, name="reject_loan"),
 
-    # NEW ADMIN ROUTES
+    # ADMIN ROUTES
     path("admin-portal/", views.admin_dashboard, name="admin_dashboard"), # Admin Home
     path("api/admin-data/", views.admin_dashboard_api, name="admin_dashboard_api"), # Admin Data
     path("api/admin-invest/", views.admin_invest_api, name="admin_invest_api"), # Buy Bonds

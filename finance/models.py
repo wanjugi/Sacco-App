@@ -40,10 +40,8 @@ class Loan(models.Model):
     principal_amount = models.DecimalField(max_digits=10, decimal_places=2, help_text="Amount borrowed")
     interest_rate = models.DecimalField(max_digits=5, decimal_places=2, default=12.0, help_text="Annual Interest Rate in %")
     duration_months = models.IntegerField(default=12, help_text="Repayment period in months")
-    # NEW FIELD
     rejection_reason = models.TextField(blank=True, null=True, help_text="Reason for rejection (if applicable)")
     
-    # Logic fields
     total_due = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     balance_due = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     
@@ -52,14 +50,18 @@ class Loan(models.Model):
     date_approved = models.DateTimeField(blank=True, null=True)
 
     def save(self, *args, **kwargs):
-        # AUTOMATION: Calculate total interest automatically before saving
+        # Calculate total interest automatically before saving
         if not self.total_due:
             # Simple Interest Formula: A = P(1 + rt)
-            # We wrap numbers in Decimal() to fix the TypeError
-            interest = self.principal_amount * (self.interest_rate / Decimal(100)) * (Decimal(self.duration_months) / Decimal(12))
+            p = Decimal(self.principal_amount)
+            r = Decimal(self.interest_rate)
+            t = Decimal(self.duration_months)
             
-            self.total_due = self.principal_amount + interest
+            interest = p * (r / Decimal(100)) * (t / Decimal(12))
+            
+            self.total_due = p + interest
             self.balance_due = self.total_due
+            
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -74,7 +76,7 @@ class LoanRepayment(models.Model):
     date = models.DateTimeField(default=timezone.now)
 
     def save(self, *args, **kwargs):
-        # AUTOMATION: Deduct from loan balance automatically
+        # Deduct from loan balance automatically
         super().save(*args, **kwargs)
         self.loan.balance_due -= self.amount
         

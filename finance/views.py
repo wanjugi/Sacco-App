@@ -22,10 +22,9 @@ from django.db.models import Sum, Q
 @login_required
 def dashboard(request):
     if request.user.is_staff:
-        return HttpResponseRedirect(reverse("admin_dashboard")) # Protect user dashboard
+        return HttpResponseRedirect(reverse("admin_dashboard")) 
     return render(request, "finance/index.html")
 
-# Create a new index function for the Landing Page
 def index(request):
     if request.user.is_authenticated:
         if request.user.is_staff:
@@ -37,26 +36,19 @@ def index(request):
 def dashboard_api(request):
     user = request.user
 
-    # --- 1. Calculate Balances ---
-    # Sum up all transaction types
     deposits = Transaction.objects.filter(user=user, transaction_type='DEPOSIT').aggregate(Sum('amount'))['amount__sum'] or 0
     withdrawals = Transaction.objects.filter(user=user, transaction_type='WITHDRAWAL').aggregate(Sum('amount'))['amount__sum'] or 0
     share_transfers = Transaction.objects.filter(user=user, transaction_type='SHARE_TRANSFER').aggregate(Sum('amount'))['amount__sum'] or 0
 
-    # Savings (Available) = Deposits - Withdrawals - Money moved to Shares
     current_savings = deposits - withdrawals - share_transfers
     
-    # Shares (Non-withdrawable) = Money moved to Shares
     share_capital = share_transfers
     
-    # Dividends (Visual only: 10% of Share Capital)
     projected_dividends = float(share_capital) * 0.10
 
-    # --- 2. Loan Calculations (Existing) ---
     active_loans = Loan.objects.filter(user=user, status='APPROVED').aggregate(Sum('balance_due'))['balance_due__sum'] or 0
-    total_loans_count = Loan.objects.filter(user=user).count()
+    total_loans_count = Loan.objects.filter(user=user, status='APPROVED').count()
     
-    # --- 3. Loan Status (Existing) ---
     latest_loan = Loan.objects.filter(user=user).order_by('-date_applied').first()
     loan_status_data = None
     if latest_loan:
@@ -72,7 +64,7 @@ def dashboard_api(request):
         'transaction_type', 'amount', 'date', 'reference_code'
     )
     
-    paginator = Paginator(transaction_query, 5) # Show 5 per page
+    paginator = Paginator(transaction_query, 5) 
     page_obj = paginator.get_page(page_number)
 
     return JsonResponse({
@@ -83,7 +75,6 @@ def dashboard_api(request):
         'loans_count': total_loans_count,
         'recent_loan': loan_status_data,
         
-        # Pagination Data
         'transactions': list(page_obj.object_list),
         'has_next': page_obj.has_next(),
         'has_previous': page_obj.has_previous(),
@@ -91,16 +82,20 @@ def dashboard_api(request):
         'num_pages': paginator.num_pages
     })
 
-@csrf_exempt  # For simplicity in this specific fetch request
+@csrf_exempt
 @login_required
 def apply_loan_api(request):
     if request.method == "POST":
         try:
+            #Check if user already has an active or pending loan
+            existing_loan = Loan.objects.filter(user=request.user, status__in=['PENDING', 'APPROVED']).exists()
+            if existing_loan:
+                 return JsonResponse({'success': False, 'error': 'You already have an active loan. Please repay it before applying for a new one.'})
+            
             data = json.loads(request.body)
             amount = Decimal(data.get('amount'))
             duration = int(data.get('duration'))
 
-            # Basic Validation
             if amount <= 0 or duration <= 0:
                 return JsonResponse({'success': False, 'error': 'Invalid values'})
 
@@ -109,7 +104,7 @@ def apply_loan_api(request):
                 user=request.user,
                 principal_amount=amount,
                 duration_months=duration,
-                interest_rate=Decimal(12.0) # Fixed rate for now
+                interest_rate=Decimal(12.0) 
             )
             
             return JsonResponse({'success': True, 'message': 'Loan Application Submitted!'})
@@ -178,7 +173,6 @@ def transact_api(request):
             if amount <= 0:
                 return JsonResponse({'success': False, 'error': 'Invalid amount'})
 
-            # --- Logic for Savings (Cash In) ---
             if action == 'DEPOSIT':
                 Transaction.objects.create(
                     user=request.user,
@@ -188,11 +182,9 @@ def transact_api(request):
                 )
                 return JsonResponse({'success': True, 'message': 'Top-up Successful!'})
 
-            # --- Logic for Share Capital (Transfer) ---
             elif action == 'SHARE_TRANSFER':
-                # Check balance first
-                current_bal = dashboard_api(request).content # This is a hacky way to check balance, better to recalc:
-                # Recalculate quick balance
+                current_bal = dashboard_api(request).content
+
                 deps = Transaction.objects.filter(user=request.user, transaction_type='DEPOSIT').aggregate(Sum('amount'))['amount__sum'] or 0
                 wds = Transaction.objects.filter(user=request.user, transaction_type__in=['WITHDRAWAL', 'SHARE_TRANSFER']).aggregate(Sum('amount'))['amount__sum'] or 0
                 available = deps - wds
@@ -208,32 +200,41 @@ def transact_api(request):
                 )
                 return JsonResponse({'success': True, 'message': 'Shares bought successfully!'})
 
-            # --- Logic for Repayment ---
             elif action == 'REPAY':
-                active_loan = Loan.objects.filter(user=request.user, status='APPROVED').first()
-                if not active_loan:
-                    return JsonResponse({'success': False, 'error': 'No active loan'})
                 
-                # Deduct from savings
+                active_loans = Loan.objects.filter(user=request.user, status='APPROVED').order_by('date_approved')
+                
+                if not active_loans.exists():
+                    return JsonResponse({'success': False, 'error': 'No active loans to repay'})
+                
+                remaining_payment = amount
                 Transaction.objects.create(
                     user=request.user,
                     amount=amount,
                     transaction_type='WITHDRAWAL',
-                    reference_code=f'LOAN #{active_loan.id} REPAY'
+                    reference_code='LOAN REPAYMENT'
                 )
-                LoanRepayment.objects.create(loan=active_loan, amount=amount)
+
+                for loan in active_loans:
+                    if remaining_payment <= 0:
+                        break
+
+                    debt = loan.balance_due
+                    
+                    if remaining_payment >= debt:
+                        pay_amount = debt
+                        remaining_payment -= debt
+                        
+                        LoanRepayment.objects.create(loan=loan, amount=pay_amount) 
+                    else:
+                        LoanRepayment.objects.create(loan=loan, amount=remaining_payment)
+                        remaining_payment = 0
                 
                 return JsonResponse({'success': True, 'message': 'Repayment Successful!'})
             
-            # --- Logic for Withdrawal (Cash Out) ---
             elif action == 'WITHDRAW':
-                # Recalculate available balance (Current Account)
                 deps = Transaction.objects.filter(user=request.user, transaction_type='DEPOSIT').aggregate(Sum('amount'))['amount__sum'] or 0
-                # Sum of all money leaving the Current Account (Withdrawals + Transfers + Repayments usually come from here too, but for now we separate Repayments or include them if your logic does. 
-                # Based on your dashboard_api, Repayments are tracking strictly against loan, but physically money leaves the account. 
-                # For safety, let's just check against the 'Savings' balance logic:
                 
-                # Retrieve "Current Savings" logic locally
                 wds = Transaction.objects.filter(user=request.user, transaction_type__in=['WITHDRAWAL', 'SHARE_TRANSFER']).aggregate(Sum('amount'))['amount__sum'] or 0
                 
                 available = deps - wds
@@ -256,7 +257,6 @@ def transact_api(request):
 
 @staff_member_required
 def staff_dashboard(request):
-    # Fetch all pending loans
     pending_loans = Loan.objects.filter(status='PENDING').order_by('-date_applied')
     return render(request, "finance/staff_dashboard.html", {
         "loans": pending_loans
@@ -268,7 +268,6 @@ def approve_loan(request, loan_id):
         loan = get_object_or_404(Loan, id=loan_id)
         loan.status = 'APPROVED'
         loan.date_approved = timezone.now()
-        # The save() method in models.py will auto-calculate the total_due
         loan.save()
     return redirect('staff_dashboard')
 
@@ -283,7 +282,7 @@ def reject_loan(request, loan_id):
     return redirect('staff_dashboard')
 
 
-# --- ADMIN VIEWS ---
+# ADMIN VIEWS 
 
 @staff_member_required
 def admin_dashboard(request):
@@ -302,32 +301,22 @@ def admin_dashboard_api(request):
     if not request.user.is_staff:
         return JsonResponse({'error': 'Unauthorized'}, status=403)
 
-    # 1. Calculate System-Wide Stats
-    # Total Share Capital (The Pool) = Sum of ALL users' share transfers
     total_share_pool = Transaction.objects.filter(transaction_type='SHARE_TRANSFER').aggregate(Sum('amount'))['amount__sum'] or 0
     
-    # Total Invested in Bonds (By Admin)
-    # We track this using transactions made by the ADMIN user with type 'BOND_INVESTMENT'
     total_bonds = Transaction.objects.filter(transaction_type='BOND_INVESTMENT').aggregate(Sum('amount'))['amount__sum'] or 0
     
-    # Available to Invest
     available_capital = total_share_pool - total_bonds
 
-    # Projected Returns (15%)
     projected_returns = float(total_bonds) * 0.15
 
-    # 2. Get User List with Details
-    # We exclude staff members from this list
     users = User.objects.filter(is_staff=False).order_by('-date_joined')
     user_data = []
 
     for u in users:
-        # Calculate Savings
         deps = Transaction.objects.filter(user=u, transaction_type='DEPOSIT').aggregate(Sum('amount'))['amount__sum'] or 0
         wds = Transaction.objects.filter(user=u, transaction_type__in=['WITHDRAWAL', 'SHARE_TRANSFER']).aggregate(Sum('amount'))['amount__sum'] or 0
         savings = deps - wds
 
-        # Calculate Loans
         loan_bal = Loan.objects.filter(user=u, status='APPROVED').aggregate(Sum('balance_due'))['balance_due__sum'] or 0
         
         user_data.append({
@@ -356,8 +345,6 @@ def admin_invest_api(request):
             data = json.loads(request.body)
             amount = Decimal(data.get('amount'))
 
-            # Check if we have enough "Share Capital" pool to invest
-            # (We reuse the logic from the dashboard api)
             share_pool = Transaction.objects.filter(transaction_type='SHARE_TRANSFER').aggregate(Sum('amount'))['amount__sum'] or 0
             current_bonds = Transaction.objects.filter(transaction_type='BOND_INVESTMENT').aggregate(Sum('amount'))['amount__sum'] or 0
             available = share_pool - current_bonds
@@ -365,7 +352,6 @@ def admin_invest_api(request):
             if amount > available:
                  return JsonResponse({'success': False, 'error': 'Insufficient Share Capital Pool'})
 
-            # Create Investment Record (Linked to Admin)
             Transaction.objects.create(
                 user=request.user,
                 amount=amount,

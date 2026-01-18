@@ -63,7 +63,6 @@
             const message = ref('');
             const success = ref(false);
 
-            // Real-time Calculation (Computed Property)
             const interest = computed(() => {
                 // Simple Interest Formula: P * R * T
                 return (amount.value * 0.12 * (duration.value / 12));
@@ -91,7 +90,7 @@
                     if (data.success) {
                         success.value = true;
                         message.value = "Application Submitted Successfully! Redirecting...";
-                        setTimeout(() => window.location.href = "/", 2000); // Send back to dashboard
+                        setTimeout(() => window.location.href = "/", 2000);
                     } else {
                         success.value = false;
                         message.value = data.error || "Something went wrong.";

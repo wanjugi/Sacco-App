@@ -16,7 +16,7 @@
                     <div class="ml-3">
                         <h3 class="text-sm font-medium text-yellow-800">Loan Application Pending</h3>
                         <div class="mt-2 text-sm text-yellow-700">
-                            <p>Your request for <strong>KES [[ recentLoan.amount.toLocaleString() ]]</strong> is
+                            <p>Your request for <strong>[[ formatCurrency(recentLoan.amount) ]]</strong> is
                                 currently under review by the admin.</p>
                         </div>
                     </div>
@@ -62,25 +62,25 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div class="bg-blue-50 p-5 rounded-xl border border-blue-100">
                 <p class="text-blue-600 text-xs font-bold uppercase tracking-wide">Current Account</p>
-                <p class="text-2xl font-extrabold text-gray-800 mt-1">[[ stats.savings ]]</p>
+                <p class="text-xl font-extrabold text-gray-800 mt-1">[[ formatCurrency(stats.savings) ]]</p>
                 <p class="text-xs text-gray-500 mt-1">Available to withdraw</p>
             </div>
 
             <div class="bg-purple-50 p-5 rounded-xl border border-purple-100">
                 <p class="text-purple-600 text-xs font-bold uppercase tracking-wide">Share Deposits</p>
-                <p class="text-2xl font-extrabold text-gray-800 mt-1">[[ stats.shares ]]</p>
+                <p class="text-xl font-extrabold text-gray-800 mt-1">[[ formatCurrency(stats.shares) ]]</p>
                 <p class="text-xs text-gray-500 mt-1">Non-withdrawable</p>
             </div>
 
             <div class="bg-green-50 p-5 rounded-xl border border-green-100">
                 <p class="text-green-600 text-xs font-bold uppercase tracking-wide">Proj. Dividends (10%)</p>
-                <p class="text-2xl font-extrabold text-gray-800 mt-1">[[ stats.dividends ]]</p>
+                <p class="text-xl font-extrabold text-gray-800 mt-1">[[ formatCurrency(stats.dividends) ]]</p>
                 <p class="text-xs text-gray-500 mt-1">Paid Annually</p>
             </div>
 
             <div class="bg-red-50 p-5 rounded-xl border border-red-100">
                 <p class="text-red-600 text-xs font-bold uppercase tracking-wide">Loan Balance</p>
-                <p class="text-2xl font-extrabold text-gray-800 mt-1">[[ stats.loan_balance ]]</p>
+                <p class="text-xl font-extrabold text-gray-800 mt-1">[[ formatCurrency(stats.loan_balance) ]]</p>
                 <p class="text-xs text-gray-500 mt-1">[[ stats.loans_count ]] Active Loans</p>
             </div>
         </div>
@@ -116,7 +116,7 @@
                             </td>
 
                             <td class="px-4 py-3 text-gray-500">[[ t.reference_code || '-' ]]</td>
-                            <td class="px-4 py-3 text-right font-medium text-gray-900">KES [[ t.amount ]]</td>
+                            <td class="px-4 py-3 text-right font-medium text-gray-900">[[ formatCurrency(t.amount) ]]</td>
                         </tr>
 
                         <tr v-if="transactions.length === 0">
@@ -176,23 +176,19 @@
 
     createApp({
         setup() {
-            // --- 1. Dashboard Data Refs ---
             // State
-            // We now use an Object for stats instead of an Array
             const stats = ref({ savings: 0, shares: 0, dividends: 0, loan_balance: 0, loans_count: 0 });
             const transactions = ref([]);
             const pagination = ref({ has_next: false, has_prev: false, current: 1, total: 1 });
 
-            // NEW: Holds the status of the latest loan application
             const recentLoan = ref(null);
 
-            // --- 2. Modal Logic Refs ---
             const showModal = ref(false);
-            const modalAction = ref('DEPOSIT'); // or 'REPAY'
+            const modalAction = ref('DEPOSIT');
             const transactAmount = ref('');
             const loading = ref(false);
 
-            // --- 3. Helper Functions ---
+            // Helper Functions
             const formatDate = (dateString) => {
                 if (!dateString) return '';
                 return new Date(dateString).toLocaleDateString('en-GB', {
@@ -200,16 +196,26 @@
                 });
             };
 
+            const formatCurrency = (value) => {
+                if (value === null || value === undefined) return 'KES 0.00';
+                return new Intl.NumberFormat('en-KE', { 
+                    style: 'currency', 
+                    currency: 'KES',
+                    currencyDisplay: 'code',
+                    minimumFractionDigits: 2 
+                }).format(value);
+            };
+
             const openModal = (action) => {
                 modalAction.value = action;
-                transactAmount.value = ''; // Reset input
+                transactAmount.value = '';
                 showModal.value = true;
             };
 
-            // Helper: Dynamic Modal Titles
+            // Dynamic Modal Titles
             const getModalTitle = () => {
                 if (modalAction.value === 'DEPOSIT') return 'Top Up Current Account';
-                if (modalAction.value === 'WITHDRAW') return 'Withdraw to M-Pesa'; // <--- NEW
+                if (modalAction.value === 'WITHDRAW') return 'Withdraw to M-Pesa';
                 if (modalAction.value === 'SHARE_TRANSFER') return 'Buy Shares';
                 return 'Repay Loan';
             }
@@ -221,24 +227,22 @@
                 return 'Pay off your active loan using your Current Account balance.';
             }
 
-            // --- 4. API Calls ---
+            // API Calls 
             const fetchData = async (page = 1) => {
                 try {
-                    // We append the page number to the URL
+                
                     const response = await fetch(`/api/dashboard-data/?page=${page}`);
                     if (response.status === 403 || response.status === 401) return;
                     const data = await response.json();
 
-                    // Map the new API response to our stats object
                     stats.value = {
-                        savings: 'KES ' + data.savings.toLocaleString(),
-                        shares: 'KES ' + data.share_capital.toLocaleString(),
-                        dividends: 'KES ' + data.dividends.toLocaleString(),
-                        loan_balance: 'KES ' + data.loan_balance.toLocaleString(),
+                        savings: data.savings,
+                        shares: data.share_capital,
+                        dividends: data.dividends,
+                        loan_balance: data.loan_balance,
                         loans_count: data.loans_count
                     };
 
-                    // Update Transactions & Pagination
                     transactions.value = data.transactions;
                     pagination.value = {
                         has_next: data.has_next,
@@ -271,11 +275,11 @@
                     const data = await res.json();
 
                     if (data.success) {
-                        alert(data.message); // Success popup
-                        showModal.value = false; // Close modal
-                        fetchData(); // Refresh numbers immediately
+                        alert(data.message); 
+                        showModal.value = false;
+                        fetchData(); 
                     } else {
-                        alert(data.error); // Error popup
+                        alert(data.error);
                     }
                 } catch (e) {
                     console.error(e);
@@ -294,7 +298,7 @@
                 stats,
                 transactions,
                 recentLoan,
-                pagination, // <--- Crucial: Export this so the HTML can see it
+                pagination,
 
                 // Modal State
                 showModal,
@@ -312,7 +316,8 @@
                 openModal, 
                 changePage, 
                 submitTransaction,
-                refreshData: fetchData
+                refreshData: fetchData,
+                formatCurrency,
             }
         },
         compilerOptions: {
