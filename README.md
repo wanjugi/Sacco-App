@@ -1,91 +1,82 @@
-# ZEED Sacco - Sacco Management System
+# ZED Capital - Sacco Management System
 
 ## Distinctiveness and Complexity
 
-ZEED Sacco is a financial technology web application designed to simulate the operations of a Kenyan Savings and Credit Cooperative Organization (SACCO). This project satisfies the distinctiveness and complexity requirements in the following ways:
+ZED Capital is a comprehensive financial technology application designed to digitize the operations of a Kenyan Savings and Credit Cooperative Organization (SACCO). Unlike standard web applications that focus on content management or social interaction, this project is built around **institutional financial logic** and **Asset Liability Management (ALM)**. The distinctiveness of this project lies in its implementation of a "Dual-Account System" (FOSA and BOSA), which is a specific banking structure requiring separate ledgers for liquid cash (Savings) and non-withdrawable equity (Share Capital). This structure forces the application to handle transactions not just as simple updates, but as immutable ledger entries that must be aggregated dynamically to calculate user balances.
 
-### Distinctiveness
-This project is distinct from the standard social network or e-commerce course projects because it models **institutional financial logic** rather than social interactions or product inventories.
+The complexity of the application is demonstrated through its sophisticated backend algorithms and reactive frontend architecture. On the backend, I implemented a **"Waterfall Repayment Algorithm"** for loan management. When a user makes a generic repayment, the system does not simply deduct a balance; it fetches all active loans, orders them by approval date, and distributes the payment sequentially—paying off the oldest debts first before carrying the remainder to newer loans. Additionally, the system overrides standard Django model methods to automate financial calculations, such as computing simple interest using `Decimal` precision to prevent floating-point errors before writing to the database.
 
-* **VS Social Network:** There are no "follows," "likes," or user-to-user messaging. The primary relationship is User-to-Ledger. The system focuses on asset liability management (ALM) where user deposits become the organization's capital for loans and investments.
-* **VS E-Commerce:** There is no shopping cart or product catalog. Instead, the application implements a **Dual-Account System** unique to Saccos:
-    * **FOSA (Front Office Service Activity):** A liquid "Current Account" for daily withdrawals and deposits.
-    * **BOSA (Back Office Service Activity):** Non-withdrawable "Share Capital" that earns dividends but cannot be accessed as cash.
-
-### Complexity
-The application moves beyond standard CRUD operations by implementing complex financial algorithms and a reactive frontend.
-
-1.  **Advanced Financial Logic (Backend):**
-    * **Waterfall Repayment Algorithm:** When a user makes a loan repayment, the system uses a custom algorithm to distribute funds across multiple active loans, prioritizing the oldest debts first until the payment amount is exhausted.
-    * **Automated Interest Calculation:** The `Loan` model overrides the `save()` method to automatically calculate simple interest based on principal, rate, and duration, converting inputs to `Decimal` types to prevent floating-point precision errors.
-    * **Polymorphic Transaction Handling:** A single `Transaction` model handles four distinct financial events (Deposits, Withdrawals, Share Transfers, Bond Investments), using aggregation queries to calculate live balances on the fly.
-
-2.  **Reactive Frontend (Vue.js Integration):**
-    * The application uses **Vue.js 3** (via CDN) to create a Single Page Application (SPA) feel within a Django template structure.
-    * **Real-time Formatting:** It utilizes the `Intl.NumberFormat` API to standardize currency display (KES) across the entire platform dynamically.
-    * **Asynchronous Data:** Dashboards fetch data via internal APIs, allowing for pagination of transaction history without page reloads.
-
-3.  **Role-Based Access Control (RBAC):**
-    * The system features **Three Distinct Portals** based on user status:
-        * **Public Landing Page:** For unauthenticated users.
-        * **User Dashboard:** For standard members to transact and apply for loans.
-        * **Staff/Admin Portal:** A restricted interface for officers to approve loans, view total system assets, and simulate investing user capital into Government Bonds.
+Furthermore, the project creates a hybrid architecture by integrating **Vue.js** directly into Django templates. Instead of relying on Django's server-side template rendering for all views, the dashboards utilize asynchronous API calls to fetch JSON data. This allows for real-time currency formatting (converting raw numbers to KES currency client-side) and seamless pagination of transaction histories without page reloads. The application also enforces strict Role-Based Access Control (RBAC), distinguishing between standard members who transact and staff/admins who have a completely separate portal for simulating institutional investments into Government Bonds.
 
 ## What’s Contained in Each File
 
 ### Main Application Directory (`finance/`)
 
-* **`models.py`**: Defines the database schema.
-    * `Transaction`: Tracks all money movement.
-    * `Loan`: Manages loan status (Pending/Approved/Paid) and interest math.
-    * `LoanRepayment`: Records individual payments against loans.
-* **`views.py`**: The core controller.
-    * Contains API endpoints (`dashboard_api`, `transact_api`) that return JSON for Vue.js.
-    * Contains the "Waterfall" logic for distributing loan repayments.
-    * Contains decorators (`@staff_member_required`) to secure admin routes.
-* **`urls.py`**: Handles routing, separating standard views from API endpoints (`/api/...`).
-* **`tests.py`**: A comprehensive test suite containing 7 unit tests. It verifies model integrity (interest calculation, repayment status updates) and API security (preventing withdrawals exceeding balance).
-* **`admin.py`**: Configuration for the default Django admin interface.
+* **`models.py`**: This file defines the core database schema.
+    * `Transaction`: A polymorphic model that tracks four distinct financial event types (Deposits, Withdrawals, Share Transfers, and Bond Investments). It links users to their financial history.
+    * `Loan`: Manages the lifecycle of a loan application. It includes a custom `save()` method that automatically calculates the total amount due based on principal, interest rate, and duration whenever a loan is created.
+    * `LoanRepayment`: Acts as a sub-ledger for loans, tracking every individual installment paid against a specific loan ID to ensure auditability.
+
+* **`views.py`**: This file contains the application controller logic and API endpoints.
+    * `dashboard_api` & `transact_api`: These are JSON endpoints that power the Vue.js frontend, handling data aggregation (using Django's `Sum` and `Filter`) to calculate live balances for Savings, Shares, and Loans on the fly.
+    * `transact_api`: specifically contains the **Waterfall Algorithm**, iterating through active loans to allocate repayment funds correctly.
+    * `admin_dashboard_api`: Aggregates the entire platform's capital to show the super-admin the total "Share Pool" available for investment.
+    * Standard views like `login`, `register`, and `index` handle authentication and page routing.
+
+* **`urls.py`**: Defines the URL routing for the application. It explicitly separates standard template routes (e.g., `/dashboard`) from API data routes (e.g., `/api/dashboard-data/`) to maintain a clean architecture.
+
+* **`tests.py`**: Contains a suite of unit tests to verify the integrity of the financial logic.
+    * `ModelTests`: Verifies that interest calculations in `models.py` are accurate and that loan statuses update to 'PAID' automatically when the balance hits zero.
+    * `ViewTests`: Tests the API endpoints to ensure users cannot withdraw more money than they have (preventing overdrafts) and cannot take multiple loans simultaneously.
+
+* **`admin.py`**: Registers the models with the built-in Django admin panel, primarily used for debugging and superuser oversight during development.
 
 ### Templates (`finance/templates/finance/`)
 
-* **`layouts.html`**: The base template. Includes Tailwind CSS, Vue.js CDN, and a dynamic Navbar that changes links based on User/Staff status.
-* **`landing.html`**: The marketing homepage with responsive hero and feature sections.
-* **`index.html`**: The main User Dashboard. Contains the Vue.js instance for the user client.
-* **`admin_dashboard.html`**: The Super-Admin interface. Features a dark-themed header and logic to invest "Share Pool" funds into bonds.
-* **`staff_dashboard.html`**: The operational dashboard for approving/rejecting loans.
-* **`loan_apply.html`**: Loan application form.
-* **`login.html` / `register.html`**: Authentication pages with CSRF protection and "Back to Home" navigation.
+* **`layouts.html`**: The base template that loads the Tailwind CSS and Vue.js libraries via CDN. It includes a dynamic Navigation Bar that conditionally renders links (e.g., hiding "Apply for Loan" for staff members) based on the authenticated user's role.
+
+* **`index.html` (User Dashboard)**: A hybrid template that mounts a Vue.js application. It contains the JavaScript logic to:
+    * Fetch user financial data asynchronously.
+    * Handle the logic for four different transaction modals (Deposit, Withdraw, Pay Loan, Buy Shares).
+    * Implement client-side pagination for the transaction table.
+
+* **`admin_dashboard.html` (Admin Portal)**: A specialized interface for superusers. It includes a Vue.js instance that fetches system-wide aggregates. It allows the admin to visualize the "Share Capital Pool" and simulate investing that pool into Government Bonds to generate returns for the Sacco.
+
+* **`staff_dashboard.html`**: An operational dashboard for loan officers. It renders a table of pending loan applications and provides server-side actions to Approve or Reject loans. It includes JavaScript to handle the "Reason for Rejection" modal.
+
+* **`landing.html`**: The public-facing marketing page. It features a responsive Hero section and an FAQ accordion to explain the Sacco's services to unregistered visitors.
+
+* **`loan_apply.html`**: A functional form for users to request new loans. It includes front-end validation to ensure loan amounts and durations are positive numbers.
+
+* **`login.html`** & **`register.html`**: Standard authentication templates styled with Tailwind CSS, including error message handling and "Back to Home" navigation for better user experience.
 
 ## How to Run the Application
 
 1.  **Install Dependencies:**
+    Navigate to the project directory and install the required packages.
     ```bash
     pip install -r requirements.txt
     ```
 
-2.  **Database Setup:**
+2.  **Apply Database Migrations:**
+    Initialize the SQLite database schema.
     ```bash
     python manage.py makemigrations finance
     python manage.py migrate
     ```
 
-3.  **Create Admin User:**
-    You need a superuser to access the Staff/Admin portals.
+3.  **Create a Superuser (Admin):**
+    A superuser account is required to access the Staff and Admin portals.
     ```bash
     python manage.py createsuperuser
     ```
 
-4.  **Run Tests (Optional but Recommended):**
-    Verify the financial logic is working correctly.
-    ```bash
-    python manage.py test finance
-    ```
-
-5.  **Start Server:**
+4.  **Run the Server:**
+    Start the development server.
     ```bash
     python manage.py runserver
     ```
 
-## Mobile Responsiveness
-The application is fully mobile-responsive. It utilizes Tailwind CSS's grid system (`grid-cols-1 md:grid-cols-4`) and utility classes to ensure that dashboards, tables, and modals resize gracefully from desktop monitors down to mobile screens.
+5.  **Access the Application:**
+    * **User Portal:** Visit `http://127.0.0.1:8000/` to register and transact as a standard member.
+    * **Admin Portal:** Login with your superuser credentials to be automatically redirected to the Admin Dashboard for capital management.
